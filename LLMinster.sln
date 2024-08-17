@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LLMinster.Scratch", "LLMinster.Scratch\LLMinster.Scratch.csproj", "{4228ECDC-5293-469C-82DB-750108CB521A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LLMinster.Tests", "LLMinster.Tests\LLMinster.Tests.csproj", "{D7E9CE35-F74E-4ACE-864E-29EB3D1C21F5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LLMinster", "LLMinster\LLMinster.csproj", "{80F17EDA-8021-46A0-8F1E-EDAD4DAF4C31}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4228ECDC-5293-469C-82DB-750108CB521A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4228ECDC-5293-469C-82DB-750108CB521A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4228ECDC-5293-469C-82DB-750108CB521A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4228ECDC-5293-469C-82DB-750108CB521A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D7E9CE35-F74E-4ACE-864E-29EB3D1C21F5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D7E9CE35-F74E-4ACE-864E-29EB3D1C21F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D7E9CE35-F74E-4ACE-864E-29EB3D1C21F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D7E9CE35-F74E-4ACE-864E-29EB3D1C21F5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{80F17EDA-8021-46A0-8F1E-EDAD4DAF4C31}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{80F17EDA-8021-46A0-8F1E-EDAD4DAF4C31}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{80F17EDA-8021-46A0-8F1E-EDAD4DAF4C31}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{80F17EDA-8021-46A0-8F1E-EDAD4DAF4C31}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

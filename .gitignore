@@ -397,3 +397,6 @@ FodyWeavers.xsd
 # JetBrains Rider
 .idea/
 *.sln.iml
+
+# Ignore the LLMinster.Scratch project
+LLMinster.Scratch/

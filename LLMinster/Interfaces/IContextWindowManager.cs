@@ -2,6 +2,6 @@
 
 public interface IContextWindowManager
 {
-    Task<string> ProcessMessageAsync(Guid sessionId, string userMessage, double temperature);
+    Task<string> ProcessMessageAsync(Guid sessionId, string userMessage, fsEnsemble.ILanguageModelClient languageModelClient, double temperature);
     Task<string> ReconstructWindowAsync(Guid sessionId);
 }

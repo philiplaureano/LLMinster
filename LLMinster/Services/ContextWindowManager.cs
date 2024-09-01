@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using LLMinster.Extensions;
 using LLMinster.Interfaces;
 using LLMinster.Models;
 using Mscc.GenerativeAI;
@@ -12,12 +13,10 @@ namespace LLMinster
     public class ContextWindowManager : IContextWindowManager
     {
         private readonly IEventStore _eventStore;
-        private readonly fsEnsemble.ILanguageModelClient _languageModelClient;
 
-        public ContextWindowManager(IEventStore eventStore, fsEnsemble.ILanguageModelClient languageModelClient)
+        public ContextWindowManager(IEventStore eventStore)
         {
             _eventStore = eventStore ?? throw new ArgumentNullException(nameof(eventStore));
-            _languageModelClient = languageModelClient ?? throw new ArgumentNullException(nameof(languageModelClient));
         }
 
         public async Task<string> ReconstructWindowAsync(Guid sessionId)
@@ -26,7 +25,7 @@ namespace LLMinster
             return FormatContextWindow(events);
         }
 
-        public async Task<string> ProcessMessageAsync(Guid sessionId, string userMessage, double temperature)
+        public async Task<string> ProcessMessageAsync(Guid sessionId, string userMessage, fsEnsemble.ILanguageModelClient languageModelClient, double temperature)
         {
             // Append user message to event store
             await _eventStore.AppendEventAsync(new SessionEvent
@@ -44,18 +43,18 @@ namespace LLMinster
 
             // Generate AI response
             var contentRequest = new fsEnsemble.ContentRequest(contextWindow, temperature);
-            var response = await _languageModelClient.GenerateContentAsync(contentRequest);
+            var result = await languageModelClient.GenerateContentAsync(contentRequest);
 
-            if (response.IsOk)
+            if (result.HasResponse())
             {
-                var aiResponse = response.ResultValue.Response.Value;
+                var aiResponse = result.ResultValue.Response.Value;
 
                 // Append AI response to event store
                 await _eventStore.AppendEventAsync(new SessionEvent
                 {
                     Id = Guid.NewGuid(),
                     SessionId = sessionId,
-                    ModelName = "AI",
+                    ModelName = languageModelClient.GetType().Name, // Changed from "AI" to use the actual type name
                     Content = aiResponse,
                     Timestamp = DateTime.UtcNow,
                     SequenceNumber = await GetNextSequenceNumber(sessionId)
@@ -63,10 +62,8 @@ namespace LLMinster
 
                 return aiResponse;
             }
-            else
-            {
-                throw new Exception($"Failed to generate AI response: {response.ErrorValue}");
-            }
+
+            throw new Exception($"Failed to generate AI response: {result.ErrorValue}");
         }
 
         private string FormatContextWindow(IEnumerable<SessionEvent> events)

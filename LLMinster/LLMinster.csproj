@@ -6,4 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="fsEnsemble" Version="0.1.5" />
+    <PackageReference Include="OneOf" Version="3.0.271" />
+  </ItemGroup>
+
 </Project>

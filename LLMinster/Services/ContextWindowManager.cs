@@ -1,12 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices.JavaScript;
 using System.Text;
 using System.Threading.Tasks;
 using LLMinster.Extensions;
 using LLMinster.Interfaces;
 using LLMinster.Models;
+using Microsoft.FSharp.Core;
 using Mscc.GenerativeAI;
+using OneOf;
+using OneOf.Types;
 
 namespace LLMinster
 {
@@ -19,16 +23,21 @@ namespace LLMinster
             _eventStore = eventStore ?? throw new ArgumentNullException(nameof(eventStore));
         }
 
-        public async Task<string> ReconstructWindowAsync(Guid sessionId)
+        public async Task<OneOf<string, None, LLMinster.Interfaces.Error>> ReconstructWindowAsync(Guid sessionId)
         {
-            var events = await _eventStore.GetEventsAsync(sessionId);
+            var events = (await _eventStore.GetEventsAsync(sessionId)).ToArray();
+
+            if (events.Length == 0)
+                return new None();
+            
             return FormatContextWindow(events);
         }
 
-        public async Task<string> ProcessMessageAsync(Guid sessionId, string userMessage, fsEnsemble.ILanguageModelClient languageModelClient, double temperature)
+        public async Task<OneOf<string, None, LLMinster.Interfaces.Error>> ProcessMessageAsync(Guid sessionId,
+            string userMessage, fsEnsemble.ILanguageModelClient languageModelClient, double temperature)
         {
             // Append user message to event store
-            await _eventStore.AppendEventAsync(new SessionEvent
+            var appendResult = await AppendEventAsync(new SessionEvent
             {
                 Id = Guid.NewGuid(),
                 SessionId = sessionId,
@@ -38,32 +47,44 @@ namespace LLMinster
                 SequenceNumber = await GetNextSequenceNumber(sessionId)
             });
 
+            if (appendResult.IsT1)
+            {
+                return appendResult.AsT1;
+            }
+
             // Reconstruct context window
-            var contextWindow = await ReconstructWindowAsync(sessionId);
+            var contextWindowResult = await ReconstructWindowAsync(sessionId);
+            if (contextWindowResult.IsError())
+                return contextWindowResult.AsT2;
+
+            var contextWindow = contextWindowResult.IsSome()? contextWindowResult.AsT0 : string.Empty;
 
             // Generate AI response
             var contentRequest = new fsEnsemble.ContentRequest(contextWindow, temperature);
             var result = await languageModelClient.GenerateContentAsync(contentRequest);
 
-            if (result.HasResponse())
+            if (!result.HasResponse())
+                return new LLMinster.Interfaces.Error($"Failed to generate AI response: {result.ErrorValue}");
+            
+            var aiResponse = result.ResultValue.Response.Value;
+
+            // Append AI response to event store
+            appendResult = await AppendEventAsync(new SessionEvent
             {
-                var aiResponse = result.ResultValue.Response.Value;
+                Id = Guid.NewGuid(),
+                SessionId = sessionId,
+                ModelName = languageModelClient.GetType().Name,
+                Content = aiResponse,
+                Timestamp = DateTime.UtcNow,
+                SequenceNumber = await GetNextSequenceNumber(sessionId)
+            });
 
-                // Append AI response to event store
-                await _eventStore.AppendEventAsync(new SessionEvent
-                {
-                    Id = Guid.NewGuid(),
-                    SessionId = sessionId,
-                    ModelName = languageModelClient.GetType().Name, // Changed from "AI" to use the actual type name
-                    Content = aiResponse,
-                    Timestamp = DateTime.UtcNow,
-                    SequenceNumber = await GetNextSequenceNumber(sessionId)
-                });
-
-                return aiResponse;
+            if (appendResult.IsT1)
+            {
+                return appendResult.AsT1;
             }
 
-            throw new Exception($"Failed to generate AI response: {result.ErrorValue}");
+            return aiResponse;
         }
 
         private string FormatContextWindow(IEnumerable<SessionEvent> events)
@@ -73,6 +94,7 @@ namespace LLMinster
             {
                 sb.AppendLine($"{@event.ModelName}: {@event.Content}");
             }
+
             return sb.ToString().TrimEnd();
         }
 
@@ -80,6 +102,19 @@ namespace LLMinster
         {
             var events = await _eventStore.GetEventsAsync(sessionId);
             return events.Any() ? events.Max(e => e.SequenceNumber) + 1 : 1;
+        }
+        
+        private async Task<OneOf<LLMinster.Interfaces.Unit, LLMinster.Interfaces.Error>> AppendEventAsync(SessionEvent @event)
+        {
+            try
+            {
+                await _eventStore.AppendEventAsync(@event);
+                return new LLMinster.Interfaces.Unit();
+            }
+            catch (Exception ex)
+            {
+                return new LLMinster.Interfaces.Error($"Failed to append event: {ex.Message}");
+            }
         }
     }
 }

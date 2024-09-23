@@ -1,5 +1,5 @@
 {
-  "providers": {
+  "Providers": {
     "Anthropic": {
       "apiKey": "your-api-key",
       "models": {
@@ -25,6 +25,6 @@
       }
     }
   },
-  "defaultAlias": "gemini-flash",
+  "DefaultAlias": "gemini-flash",
   "WatchDirectory" : "c:\\watch\\"
 }

@@ -11,14 +11,6 @@ We're currently in the early stages of development, focusing on building a robus
 **Current Progress:**
 
 - **Phase 0 (Completed):** We've built a basic command-line chat client that demonstrates the core functionality of LLMinster, including streaming responses from ChatGPT. You can find the demo script in the [examples](/examples) directory.
-- **Phase 1 (In Progress):**  We're actively working on adding session persistence and conversation history management.  This will allow users to save and load their chat sessions, providing a more seamless and convenient experience.
-
-**Planned Features (Phase 1):**
-
-- **Session Management:** Create, load, and save chat sessions.
-- **Conversation History:**  Store and retrieve conversation history for each session. 
-- **Robust Error Handling:**  Using Railway Oriented Programming (ROP) for predictable error management. 
-- **Event Sourcing (Internal):**  Laying the foundation for event sourcing to enable more advanced features in future phases.
 
 ## Technology Stack:
 

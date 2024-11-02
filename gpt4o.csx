@@ -1,5 +1,5 @@
 #r "nuget: Newtonsoft.Json, 13.0.3"
-#r "nuget: OpenAI-DotNet, 7.4.3"
+#r "nuget: OpenAI-dotnet, 8.3.0"
 
 using System;
 using System.IO;
@@ -8,8 +8,10 @@ using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Diagnostics;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 using OpenAI;
+using OpenAI.Chat;
 
 const string HashesFilePath = "processed_gpt4o_hashes.json";
 private object _hashLock = new object();
@@ -31,7 +33,7 @@ async Task Main()
         return;
     }
 
-    using var api = new OpenAIClient(apiKeys.OpenAIKey);
+    var client = new OpenAIClient(apiKeys.OpenAIKey);
 
     Directory.CreateDirectory(appConfig.WatchDirectory);
 
@@ -41,7 +43,7 @@ async Task Main()
     Console.WriteLine($"Watching directory: {appConfig.WatchDirectory}");
     Console.WriteLine("Watching for new or changed .gpt4o-q files. Press ENTER to exit.");
 
-    var watcherTask = WatchDirectoryAsync(appConfig.WatchDirectory, api, processedHashes, cts.Token);
+    var watcherTask = WatchDirectoryAsync(appConfig.WatchDirectory, client, processedHashes, cts.Token);
 
     Console.ReadLine();
     cts.Cancel();
@@ -144,15 +146,15 @@ void SaveProcessedHashes(ConcurrentDictionary<string, byte> hashes)
     }
 }
 
-async Task WatchDirectoryAsync(string watchDir, OpenAIClient api, 
+async Task WatchDirectoryAsync(string watchDir, OpenAIClient client, 
     ConcurrentDictionary<string, byte> processedHashes, CancellationToken ct)
 {
     using var watcher = new FileSystemWatcher(watchDir);
     watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime;
     watcher.Filter = "*.gpt4o-q";
 
-    watcher.Changed += async (sender, e) => await ProcessFileAsync(e.FullPath, api, processedHashes);
-    watcher.Created += async (sender, e) => await ProcessFileAsync(e.FullPath, api, processedHashes);
+    watcher.Changed += async (sender, e) => await ProcessFileAsync(e.FullPath, client, processedHashes);
+    watcher.Created += async (sender, e) => await ProcessFileAsync(e.FullPath, client, processedHashes);
 
     watcher.EnableRaisingEvents = true;
 
@@ -166,7 +168,7 @@ async Task WatchDirectoryAsync(string watchDir, OpenAIClient api,
     }
 }
 
-async Task ProcessFileAsync(string filePath, OpenAIClient api,
+async Task ProcessFileAsync(string filePath, OpenAIClient client,
     ConcurrentDictionary<string, byte> processedHashes)
 {
     try
@@ -191,21 +193,18 @@ async Task ProcessFileAsync(string filePath, OpenAIClient api,
 
             var messages = new List<Message>
             {
-                new Message(Role.System, context),
-                new Message(Role.User, $"Latest question: {question}")
+                new(Role.System, context),
+                new(Role.User, question)  // Fixed: now using question instead of context
             };
 
-            var chatRequest = new ChatRequest(messages, Model.GPT4o)
-            {
-                Temperature = 0.025f,
-                MaxTokens = 16384
-            };
+            var chatRequest = new ChatRequest(messages, model: "gpt-4o", temperature: 0.025f,
+                maxTokens: 16384);
             
             var stopwatch = Stopwatch.StartNew();
-            var response = await api.ChatEndpoint.GetCompletionAsync(chatRequest);
+            var response = await client.ChatEndpoint.GetCompletionAsync(chatRequest);
             stopwatch.Stop();
             
-            string answer = response.FirstChoice.Message.Content.Trim();
+            string answer = response.FirstChoice.Message.Content;
             double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
 
             // Generate a unique ID for this Q&A pair

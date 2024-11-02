@@ -201,7 +201,7 @@ async Task ProcessFileAsync(string filePath, OpenAIClient api,
             var response = await api.ChatEndpoint.GetCompletionAsync(chatRequest);
             stopwatch.Stop();
             
-            string answer = response.FirstChoice.Message.Content.Trim();
+            string answer = response.FirstChoice.Message.Content.ToString();
             double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
 
             // Generate a unique ID for this Q&A pair

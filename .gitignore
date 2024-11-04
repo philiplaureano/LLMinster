@@ -398,5 +398,4 @@ FodyWeavers.xsd
 .idea/
 *.sln.iml
 
-# Ignore the LLMinster.Scratch project
-LLMinster.Scratch/
+api-keys.json

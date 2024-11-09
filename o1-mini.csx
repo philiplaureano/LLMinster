@@ -31,7 +31,7 @@ async Task Main()
         return;
     }
 
-    using var api = new OpenAIClient(apiKeys.OpenAIKey);
+    var api = new OpenAIClient(apiKeys.OpenAIKey);
 
     Directory.CreateDirectory(appConfig.WatchDirectory);
 
@@ -189,17 +189,13 @@ async Task ProcessFileAsync(string filePath, OpenAIClient api,
             string contextFilePath = Path.Combine(Path.GetDirectoryName(filePath), $"{baseFileName}.context.md");
             string context = await LoadOrCreateContextFile(contextFilePath);
 
-            var messages = new List<Message>
+            var messages = new List<OpenAI.Chat.Message>
             {
-                new Message(Role.System, context),
-                new Message(Role.User, $"Latest question: {question}")
+                new OpenAI.Chat.Message(Role.System, context),
+                new OpenAI.Chat.Message(Role.User, $"Latest question: {question}")
             };
 
-            var chatRequest = new ChatRequest(messages, "o1-mini")
-            {
-                Temperature = 0.025f,
-                MaxTokens = 32768
-            };
+            var chatRequest = new OpenAI.Chat.ChatRequest(messages, model:"o1-mini", temperature:0.025f);
             
             var stopwatch = Stopwatch.StartNew();
             var response = await api.ChatEndpoint.GetCompletionAsync(chatRequest);

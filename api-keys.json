@@ -1,5 +1,6 @@
 {
   "GeminiKey": "your-gemini-api-key",
   "ClaudeApiKey": "your-claude-api-key",
-  "OpenAIKey" : "your-openai-key"
+  "OpenAIKey" : "your-openai-key",
+  "OpenRouterKey" : "your-openrouter-key"
 }

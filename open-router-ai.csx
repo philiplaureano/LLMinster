@@ -1,4 +1,5 @@
 #r "nuget: Newtonsoft.Json, 13.0.3"
+#r "nuget: LLMinster.Interfaces, 0.0.3"
 
 using System;
 using System.IO;
@@ -7,6 +8,8 @@ using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Diagnostics;
+using System.Collections.Generic;
+using LLMinster.Interfaces;
 using Newtonsoft.Json;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -16,18 +19,18 @@ using System.Text;
 const string HashesFilePath = "processed_open_router_hashes.json";
 object _hashLock = new object();
 
+// Constants for context file formatting
 const string ENTRY_START = "<<ENTRY>>";
 const string ENTRY_END = "<</ENTRY>>";
-const string QUESTION_START = "<<QUESTION"; // Followed by ID
+const string QUESTION_START = "<<QUESTION";  // Will be followed by ID
 const string QUESTION_END = "<</QUESTION>>";
-const string ANSWER_START = "<<ANSWER";     // Followed by ID
+const string ANSWER_START = "<<ANSWER";      // Will be followed by ID
 const string ANSWER_END = "<</ANSWER>>";
 
-await MainAsync();
+await Main();
 
-async Task MainAsync()
+async Task Main()
 {
-    // Load configurations
     var (apiKeys, appConfig) = LoadConfigurations();
     if (apiKeys == null || appConfig == null)
     {
@@ -35,11 +38,10 @@ async Task MainAsync()
         return;
     }
 
-    // Initialize the OpenRouterClient
     var client = new OpenRouterClient(apiKeys.OpenRouterKey, appConfig.OpenRouterModel);
+
     Directory.CreateDirectory(appConfig.WatchDirectory);
 
-    // Load processed hashes and set up cancellation token
     var processedHashes = LoadProcessedHashes();
     var cts = new CancellationTokenSource();
 
@@ -55,129 +57,36 @@ async Task MainAsync()
     SaveProcessedHashes(processedHashes);
 }
 
-// Class Definitions for API Keys, Config, and Client
-
-public class ApiKeys
-{
-    [JsonProperty("OpenRouterKey")]
-    public string OpenRouterKey { get; set; }
-}
-
-public class AppConfig
-{
-    [JsonProperty("WatchDirectory")]
-    public string WatchDirectory { get; set; }
-
-    [JsonProperty("OpenRouterModel")]
-    public string OpenRouterModel { get; set; }
-}
-
-public interface ILLMClient
-{
-    Task<string> GenerateContentAsync(string prompt, GenerationOptions options);
-}
-
-public class GenerationOptions
-{
-    public double Temperature { get; set; }
-    public int MaxTokens { get; set; }
-}
-
-public class OpenRouterClient : ILLMClient
-{
-    private const string ApiBaseUrl = "https://openrouter.ai/api/v1/chat/completions";
-    private readonly string _apiKey;
-    private readonly string _modelName;
-
-    public OpenRouterClient(string apiKey, string modelName)
-    {
-        _apiKey = apiKey ?? throw new ArgumentNullException(nameof(apiKey));
-        _modelName = modelName ?? throw new ArgumentNullException(nameof(modelName));
-    }
-
-    public async Task<string> GenerateContentAsync(string prompt, GenerationOptions options)
-    {
-        if (string.IsNullOrWhiteSpace(prompt))
-            throw new ArgumentException("Prompt cannot be null or empty.", nameof(prompt));
-
-        if (options == null)
-            throw new ArgumentNullException(nameof(options));
-
-        using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
-
-        var requestPayload = new
-        {
-            model = _modelName,
-            messages = new[]
-            {
-                new { role = "user", content = prompt }
-            },
-            temperature = options.Temperature,
-            max_tokens = options.MaxTokens
-        };
-
-        var jsonPayload = JsonConvert.SerializeObject(requestPayload);
-        using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-
-        var response = await httpClient.PostAsync(ApiBaseUrl, content);
-        var responseContent = await response.Content.ReadAsStringAsync();
-
-        if (!response.IsSuccessStatusCode)
-        {
-            Console.WriteLine($"API Error: {response.StatusCode}");
-            Console.WriteLine($"Error Details: {responseContent}");
-            throw new InvalidOperationException($"API request failed with status code {response.StatusCode}.");
-        }
-
-        var chatResponse = JsonConvert.DeserializeObject<ChatCompletionResponse>(responseContent);
-
-        if (chatResponse?.Choices != null && chatResponse.Choices.Length > 0)
-        {
-            return chatResponse.Choices[0].Message.Content;
-        }
-
-        throw new InvalidOperationException("No response received from the API.");
-    }
-}
-
-// Chat Completion API Classes
-public class ChatCompletionResponse
-{
-    [JsonProperty("choices")]
-    public Choice[] Choices { get; set; }
-}
-
-public class Choice
-{
-    [JsonProperty("message")]
-    public Message Message { get; set; }
-}
-
-public class Message
-{
-    [JsonProperty("role")]
-    public string Role { get; set; }
-
-    [JsonProperty("content")]
-    public string Content { get; set; }
-}
-
-// Supporting Functions
 (ApiKeys apiKeys, AppConfig appConfig) LoadConfigurations()
 {
     const string apiKeysPath = "api-keys.json";
     const string configPath = "config.json";
 
     ApiKeys apiKeys = null;
-    AppConfig appConfig = null;
-
     if (!File.Exists(apiKeysPath))
     {
         Console.WriteLine($"API keys file not found: {apiKeysPath}");
         return (null, null);
     }
 
+    try
+    {
+        string jsonString = File.ReadAllText(apiKeysPath);
+        apiKeys = JsonConvert.DeserializeObject<ApiKeys>(jsonString);
+
+        if (string.IsNullOrWhiteSpace(apiKeys.OpenRouterKey))
+        {
+            Console.WriteLine("Invalid API keys configuration: OpenRouterKey must be specified.");
+            return (null, null);
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error loading API keys file: {ex.Message}");
+        return (null, null);
+    }
+
+    AppConfig appConfig = null;
     if (!File.Exists(configPath))
     {
         Console.WriteLine($"Configuration file not found: {configPath}");
@@ -186,12 +95,18 @@ public class Message
 
     try
     {
-        apiKeys = JsonConvert.DeserializeObject<ApiKeys>(File.ReadAllText(apiKeysPath));
-        appConfig = JsonConvert.DeserializeObject<AppConfig>(File.ReadAllText(configPath));
+        string jsonString = File.ReadAllText(configPath);
+        appConfig = JsonConvert.DeserializeObject<AppConfig>(jsonString);
+
+        if (string.IsNullOrWhiteSpace(appConfig.WatchDirectory))
+        {
+            Console.WriteLine("Invalid configuration: WatchDirectory must be specified.");
+            return (null, null);
+        }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Error loading configuration: {ex.Message}");
+        Console.WriteLine($"Error loading configuration file: {ex.Message}");
         return (null, null);
     }
 
@@ -204,7 +119,8 @@ ConcurrentDictionary<string, byte> LoadProcessedHashes()
     {
         try
         {
-            var hashes = JsonConvert.DeserializeObject<string[]>(File.ReadAllText(HashesFilePath));
+            string json = File.ReadAllText(HashesFilePath);
+            var hashes = JsonConvert.DeserializeObject<string[]>(json);
             return new ConcurrentDictionary<string, byte>(hashes.ToDictionary(h => h, h => (byte)1));
         }
         catch (Exception ex)
@@ -222,7 +138,9 @@ void SaveProcessedHashes(ConcurrentDictionary<string, byte> hashes)
     {
         try
         {
-            File.WriteAllText(HashesFilePath, JsonConvert.SerializeObject(hashes.Keys.ToArray()));
+            var hashArray = hashes.Keys.ToArray();
+            var json = JsonConvert.SerializeObject(hashArray);
+            File.WriteAllText(HashesFilePath, json);
         }
         catch (Exception ex)
         {
@@ -231,13 +149,12 @@ void SaveProcessedHashes(ConcurrentDictionary<string, byte> hashes)
     }
 }
 
-async Task WatchDirectoryAsync(string watchDir, ILLMClient client, ConcurrentDictionary<string, byte> processedHashes, CancellationToken ct)
+async Task WatchDirectoryAsync(string watchDir, OpenRouterClient client,
+    ConcurrentDictionary<string, byte> processedHashes, CancellationToken ct)
 {
-    using var watcher = new FileSystemWatcher(watchDir)
-    {
-        NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime,
-        Filter = "*.open-router-q"
-    };
+    using var watcher = new FileSystemWatcher(watchDir);
+    watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime;
+    watcher.Filter = "*.open-router-q";
 
     watcher.Changed += async (sender, e) => await ProcessFileAsync(e.FullPath, client, processedHashes);
     watcher.Created += async (sender, e) => await ProcessFileAsync(e.FullPath, client, processedHashes);
@@ -254,28 +171,99 @@ async Task WatchDirectoryAsync(string watchDir, ILLMClient client, ConcurrentDic
     }
 }
 
-async Task ProcessFileAsync(string filePath, ILLMClient client, ConcurrentDictionary<string, byte> processedHashes)
+async Task ProcessFileAsync(string filePath, OpenRouterClient client,
+    ConcurrentDictionary<string, byte> processedHashes)
 {
     try
     {
+        string extension = Path.GetExtension(filePath);
+        if (extension.Equals(".answer.md", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".context.md", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         await WaitForFileAccess(filePath);
-        var question = await File.ReadAllTextAsync(filePath);
-        var hash = ComputeSHA256(question);
+
+        string question = await File.ReadAllTextAsync(filePath);
+        string hash = ComputeSHA256(question);
 
         if (processedHashes.TryAdd(hash, 1))
         {
-            var options = new GenerationOptions { Temperature = 0.025, MaxTokens = 16384 };
-            var answer = await client.GenerateContentAsync(question, options);
+            string baseFileName = Path.GetFileNameWithoutExtension(filePath);
+            string contextFilePath = Path.Combine(Path.GetDirectoryName(filePath), $"{baseFileName}.context.md");
+            string context = await LoadOrCreateContextFile(contextFilePath);
 
-            var answerFilePath = $"{filePath}.answer.md";
+            var options = new GenerationOptions
+            {
+                Temperature = 1,
+                MaxTokens = 16384
+            };
+
+            var stopwatch = Stopwatch.StartNew();
+            var answer = await client.GenerateContentAsync(question, options);
+            stopwatch.Stop();
+
+            double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
+
+            // Generate a unique ID for this Q&A pair
+            string qaId = Guid.NewGuid().ToString();
+
+            // Update [filename].answer.md file with only the answer (no ID or delineators)
+            string answerFilePath = Path.Combine(Path.GetDirectoryName(filePath), $"{baseFileName}.answer.md");
             await File.WriteAllTextAsync(answerFilePath, answer);
 
-            Console.WriteLine($"Processed: {filePath}, Answer: {answerFilePath}");
+            // Append the new Q&A to the [filename].context.md file with IDs and delineators
+            await AppendToContextFile(contextFilePath, question, answer, qaId);
+
+            Console.WriteLine($"Processed file: {Path.GetFileName(filePath)}");
+            Console.WriteLine($"Answer written to: {Path.GetFileName(answerFilePath)}");
+            Console.WriteLine($"Context updated in: {Path.GetFileName(contextFilePath)}");
+            Console.WriteLine($"Time taken for GenerateContent: {elapsedSeconds:F2} seconds");
+            SaveProcessedHashes(processedHashes);
+        }
+        else
+        {
+            Console.WriteLine($"File content already processed: {Path.GetFileName(filePath)}");
         }
     }
     catch (Exception ex)
     {
         Console.WriteLine($"Error processing file {filePath}: {ex.Message}");
+    }
+}
+
+async Task<string> LoadOrCreateContextFile(string contextFilePath)
+{
+    if (File.Exists(contextFilePath))
+    {
+        return await File.ReadAllTextAsync(contextFilePath);
+    }
+
+    return "# Conversation Context\n\nThis file contains question-answer pairs with unique IDs.\n\n";
+}
+
+async Task AppendToContextFile(string contextFilePath, string question, string answer, string qaId)
+{
+    using (var writer = new StreamWriter(contextFilePath, append: true))
+    {
+        await writer.WriteLineAsync($"{ENTRY_START}");
+        await writer.WriteLineAsync($"{QUESTION_START}:{qaId}>>");
+        await writer.WriteLineAsync(question);
+        await writer.WriteLineAsync(QUESTION_END);
+        await writer.WriteLineAsync($"{ANSWER_START}:{qaId}>>");
+        await writer.WriteLineAsync(answer);
+        await writer.WriteLineAsync(ANSWER_END);
+        await writer.WriteLineAsync($"{ENTRY_END}\n");
+    }
+}
+
+string ComputeSHA256(string content)
+{
+    using (SHA256 sha256 = SHA256.Create())
+    {
+        byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(content));
+        return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
     }
 }
 
@@ -285,8 +273,10 @@ async Task WaitForFileAccess(string filePath, int maxAttempts = 10, int delayMs 
     {
         try
         {
-            using (var stream = File.Open(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            using (FileStream stream = File.Open(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
                 return;
+            }
         }
         catch (IOException)
         {
@@ -297,9 +287,73 @@ async Task WaitForFileAccess(string filePath, int maxAttempts = 10, int delayMs 
     throw new TimeoutException($"Unable to access file {filePath} after {maxAttempts} attempts.");
 }
 
-string ComputeSHA256(string content)
+class ApiKeys
 {
-    using var sha256 = SHA256.Create();
-    var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(content));
-    return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+    public string OpenRouterKey { get; set; }
+}
+
+class AppConfig
+{
+    public string WatchDirectory { get; set; }
+    public string OpenRouterModel { get; set; }
+}
+
+// OpenRouter Client Class
+public class OpenRouterClient
+{
+    private const string ApiBaseUrl = "https://openrouter.ai/api/v1/chat/completions";
+    private readonly string _apiKey;
+    private readonly string _modelName;
+
+    public OpenRouterClient(string apiKey, string modelName)
+    {
+        _apiKey = apiKey;
+        _modelName = modelName;
+    }
+
+    public async Task<string> GenerateContentAsync(string prompt, GenerationOptions options)
+    {
+        using var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+
+        var requestPayload = new
+        {
+            model = _modelName,
+            messages = new[] { new { role = "user", content = prompt } },
+            temperature = options.Temperature,
+            max_tokens = options.MaxTokens
+        };
+
+        var jsonPayload = JsonConvert.SerializeObject(requestPayload);
+        using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
+        var response = await httpClient.PostAsync(ApiBaseUrl, content);
+        response.EnsureSuccessStatusCode();
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var chatResponse = JsonConvert.DeserializeObject<ChatCompletionResponse>(responseContent);
+
+        return chatResponse.Choices[0].Message.Content;
+    }
+
+    private class ChatCompletionResponse
+    {
+        [JsonProperty("choices")]
+        public Choice[] Choices { get; set; }
+    }
+
+    private class Choice
+    {
+        [JsonProperty("message")]
+        public Message Message { get; set; }
+    }
+
+    private class Message
+    {
+        [JsonProperty("role")]
+        public string Role { get; set; }
+
+        [JsonProperty("content")]
+        public string Content { get; set; }
+    }
 }
